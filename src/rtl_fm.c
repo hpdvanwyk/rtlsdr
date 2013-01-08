@@ -409,7 +409,7 @@ void raw_demod(struct fm_state *fm)
 
 void deemph_filter(struct fm_state *fm)
 {
-	static int avg;  // cheating...
+	static int avg=0;  // cheating...
 	int i, d;
 	// de-emph IIR
 	// avg = avg * (1 - alpha) + sample * alpha;
@@ -593,6 +593,13 @@ int main(int argc, char **argv)
 	fm.deemph = 0;
 	fm.output_rate = -1;  // flag for disabled
 	fm.mode_demod = &fm_demod;
+	fm.pre_j=0;
+	fm.pre_r=0;
+	fm.now_r=0;
+	fm.now_j=0;
+	fm.prev_lpr_index=0;
+	fm.deemph_a=0;
+	fm.now_lpr = 0;
 	sem_init(&data_ready, 0, 0);
 
 	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:EFANWMULRD")) != -1) {
