@@ -649,10 +649,9 @@ int main(int argc, char **argv)
 		case 'W':
 			wb_mode = 1;
 			fm.mode_demod = &fm_demod;
-			fm.sample_rate = 170000;
-			fm.output_rate = 32000;
+			fm.sample_rate = 176400;
+			fm.output_rate = 44100;
 			fm.custom_atan = 1;
-			fm.post_downsample = 4;
 			fm.deemph = 1;
 			fm.squelch_level = 0;
 			break;
