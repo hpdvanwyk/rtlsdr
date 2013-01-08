@@ -109,6 +109,7 @@ struct fm_state
 	int      deemph_a;
 	int      now_lpr;
 	int      prev_lpr_index;
+	int      stdin_input;
 	void     (*mode_demod)(struct fm_state*);
 };
 
@@ -476,26 +477,38 @@ static void optimal_settings(struct fm_state *fm, int freq, int hopping)
 	if (fm->output_scale < 1) {
 		fm->output_scale = 1;}
 	fm->output_scale = 1;
-	/* Set the frequency */
-	r = rtlsdr_set_center_freq(dev, (uint32_t)capture_freq);
+	if(!fm->stdin_input)
+	{
+	  /* Set the frequency */
+	  r = rtlsdr_set_center_freq(dev, (uint32_t)capture_freq);
+	}
+	else
+	{
+	  r=0;
+	}
 	if (hopping) {
 		return;}
 	fprintf(stderr, "Oversampling input by: %ix.\n", fm->downsample);
 	fprintf(stderr, "Oversampling output by: %ix.\n", fm->post_downsample);
 	fprintf(stderr, "Buffer size: %0.2fms\n",
 		1000 * 0.5 * lcm_post[fm->post_downsample] * (float)DEFAULT_BUF_LENGTH / (float)capture_rate);
-	if (r < 0) {
-		fprintf(stderr, "WARNING: Failed to set center freq.\n");}
-	else {
-		fprintf(stderr, "Tuned to %u Hz.\n", capture_freq);}
-
+	if(!fm->stdin_input)
+	{
+	  if (r < 0) {
+	      fprintf(stderr, "WARNING: Failed to set center freq.\n");}
+	    else {
+	      fprintf(stderr, "Tuned to %u Hz.\n", capture_freq);}
+	}
 	/* Set the sample rate */
 	fprintf(stderr, "Sampling at %u Hz.\n", capture_rate);
 	if (fm->output_rate > 0) {
 		fprintf(stderr, "Output at %u Hz.\n", fm->output_rate);
 	} else {
 		fprintf(stderr, "Output at %u Hz.\n", fm->sample_rate/fm->post_downsample);}
-	r = rtlsdr_set_sample_rate(dev, (uint32_t)capture_rate);
+	if(!fm->stdin_input)
+	{
+	  r = rtlsdr_set_sample_rate(dev, (uint32_t)capture_rate);
+	}
 	if (r < 0) {
 		fprintf(stderr, "WARNING: Failed to set sample rate.\n");}
 
@@ -575,6 +588,7 @@ int main(int argc, char **argv)
 	struct fm_state fm; 
 	char *filename = NULL;
 	int n_read, r, opt, wb_mode = 0;
+	int readcount;
 	int i, gain = AUTO_GAIN; // tenths of a dB
 	uint8_t *buffer;
 	uint32_t dev_index = 0;
@@ -592,6 +606,7 @@ int main(int argc, char **argv)
 	fm.custom_atan = 0;
 	fm.deemph = 0;
 	fm.output_rate = -1;  // flag for disabled
+	fm.stdin_input = 0;
 	fm.mode_demod = &fm_demod;
 	fm.pre_j=0;
 	fm.pre_r=0;
@@ -602,7 +617,7 @@ int main(int argc, char **argv)
 	fm.now_lpr = 0;
 	sem_init(&data_ready, 0, 0);
 
-	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:EFANWMULRD")) != -1) {
+	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:EFANWMULRDP")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = atoi(optarg);
@@ -667,6 +682,9 @@ int main(int argc, char **argv)
 		case 'R':
 			fm.mode_demod = &raw_demod;
 			break;
+		case 'P':
+			fm.stdin_input = 1;
+			break;
 		default:
 			usage();
 			break;
@@ -683,26 +701,29 @@ int main(int argc, char **argv)
 
 	buffer = malloc(lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH * sizeof(uint8_t));
 
-	device_count = rtlsdr_get_device_count();
-	if (!device_count) {
-		fprintf(stderr, "No supported devices found.\n");
-		exit(1);
-	}
-
-	fprintf(stderr, "Found %d device(s):\n", device_count);
-	for (i = 0; i < device_count; i++) {
-		rtlsdr_get_device_usb_strings(i, vendor, product, serial);
-		fprintf(stderr, "  %d:  %s, %s, SN: %s\n", i, vendor, product, serial);
-	}
-	fprintf(stderr, "\n");
-
-	fprintf(stderr, "Using device %d: %s\n",
-		dev_index, rtlsdr_get_device_name(dev_index));
-
-	r = rtlsdr_open(&dev, dev_index);
-	if (r < 0) {
-		fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
-		exit(1);
+	if(!fm.stdin_input)
+	{
+	  device_count = rtlsdr_get_device_count();
+	  if (!device_count) {
+	    fprintf(stderr, "No supported devices found.\n");
+	    exit(1);
+	  }
+	  
+	  fprintf(stderr, "Found %d device(s):\n", device_count);
+	  for (i = 0; i < device_count; i++) {
+	    rtlsdr_get_device_usb_strings(i, vendor, product, serial);
+	    fprintf(stderr, "  %d:  %s, %s, SN: %s\n", i, vendor, product, serial);
+	  }
+	  fprintf(stderr, "\n");
+	  
+	  fprintf(stderr, "Using device %d: %s\n",
+		  dev_index, rtlsdr_get_device_name(dev_index));
+	  
+	  r = rtlsdr_open(&dev, dev_index);
+	  if (r < 0) {
+	    fprintf(stderr, "Failed to open rtlsdr device #%d.\n", dev_index);
+	    exit(1);
+	  }
 	}
 #ifndef _WIN32
 	sigact.sa_handler = sighandler;
@@ -728,19 +749,22 @@ int main(int argc, char **argv)
 	optimal_settings(&fm, 0, 0);
 	build_fir(&fm);
 
-	/* Set the tuner gain */
-	if (gain == AUTO_GAIN) {
-		r = rtlsdr_set_tuner_gain_mode(dev, 0);
-	} else {
-		r = rtlsdr_set_tuner_gain_mode(dev, 1);
-		r = rtlsdr_set_tuner_gain(dev, gain);
-	}
-	if (r != 0) {
-		fprintf(stderr, "WARNING: Failed to set tuner gain.\n");
-	} else if (gain == AUTO_GAIN) {
-		fprintf(stderr, "Tuner gain set to automatic.\n");
-	} else {
-		fprintf(stderr, "Tuner gain set to %0.2f dB.\n", gain/10.0);
+	if(!fm.stdin_input)
+	{
+	  /* Set the tuner gain */
+	  if (gain == AUTO_GAIN) {
+	    r = rtlsdr_set_tuner_gain_mode(dev, 0);
+	  } else {
+	    r = rtlsdr_set_tuner_gain_mode(dev, 1);
+	    r = rtlsdr_set_tuner_gain(dev, gain);
+	  }
+	  if (r != 0) {
+	    fprintf(stderr, "WARNING: Failed to set tuner gain.\n");
+	  } else if (gain == AUTO_GAIN) {
+	    fprintf(stderr, "Tuner gain set to automatic.\n");
+	  } else {
+	    fprintf(stderr, "Tuner gain set to %0.2f dB.\n", gain/10.0);
+	  }
 	}
 
 	if (strcmp(filename, "-") == 0) { /* Write samples to stdout */
@@ -756,26 +780,58 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* Reset endpoint before we start reading from it (mandatory) */
-	r = rtlsdr_reset_buffer(dev);
-	if (r < 0) {
-		fprintf(stderr, "WARNING: Failed to reset buffers.\n");}
-
-	pthread_create(&demod_thread, NULL, demod_thread_fn, (void *)(&fm));
-	rtlsdr_read_async(dev, rtlsdr_callback, (void *)(&fm),
+	if(!fm.stdin_input)
+	{
+	  /* Reset endpoint before we start reading from it (mandatory) */
+	  r = rtlsdr_reset_buffer(dev);
+	  if (r < 0) {
+	    fprintf(stderr, "WARNING: Failed to reset buffers.\n");}
+	    
+	    pthread_create(&demod_thread, NULL, demod_thread_fn, (void *)(&fm));
+	    rtlsdr_read_async(dev, rtlsdr_callback, (void *)(&fm),
 			      DEFAULT_ASYNC_BUF_NUMBER,
 			      lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH);
+	}
+	else
+	{
+	  readcount = fread(buffer, sizeof(uint8_t), lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH, stdin);
+	  while(readcount && !do_exit)
+	  {
+		  int i;
+		  memcpy(fm.buf, buffer, readcount);
+		  fm.buf_len = readcount;
+		  full_demod(&fm);
+		  if (!fm.term_squelch_hits) 
+		  {
+			  readcount = fread(buffer, sizeof(uint8_t), lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH, stdin);
+			  continue;
+		  }
+		  
+		  if (fm.squelch_hits > fm.term_squelch_hits) 
+		  {
+			  do_exit = 1;
+		  }
+		  readcount = fread(buffer, sizeof(uint8_t), lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH, stdin);
+	  }
+	  r=0;
+	}
 
 	if (do_exit) {
 		fprintf(stderr, "\nUser cancel, exiting...\n");}
 	else {
 		fprintf(stderr, "\nLibrary error %d, exiting...\n", r);}
-	rtlsdr_cancel_async(dev);
+	if(!fm.stdin_input)
+	{
+	  rtlsdr_cancel_async(dev);
+	}
 
 	if (fm.file != stdout) {
 		fclose(fm.file);}
 
-	rtlsdr_close(dev);
+	if(!fm.stdin_input)
+	{
+	  rtlsdr_close(dev);
+	}
 	free (buffer);
 	return r >= 0 ? r : -r;
 }
