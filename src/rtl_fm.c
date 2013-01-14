@@ -517,7 +517,10 @@ static void optimal_settings(struct fm_state *fm, int freq, int hopping)
 void full_demod(struct fm_state *fm)
 {
 	int sr, freq_next;
-	rotate_90(fm->buf, fm->buf_len);
+	if(!fm->stdin_input)
+	{
+		rotate_90(fm->buf, fm->buf_len);
+	}
 	if (fm->fir_enable) {
 		low_pass_fir(fm, fm->buf, fm->buf_len);
 	} else {
