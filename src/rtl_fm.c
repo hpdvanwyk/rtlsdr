@@ -546,9 +546,12 @@ void full_demod(struct fm_state *fm)
 		freq_next = (fm->freq_now + 1) % fm->freq_len;
 		optimal_settings(fm, freq_next, 1);
 		fm->squelch_hits = CONSEQ_SQUELCH + 1;  /* hair trigger */
-		/* wait for settling and dump buffer */
-		usleep(5000);
-		rtlsdr_read_sync(dev, NULL, 4096, NULL);
+		if(!fm->stdin_input)
+		{
+			/* wait for settling and dump buffer */
+			usleep(5000);
+			rtlsdr_read_sync(dev, NULL, 4096, NULL);
+		}
 	}
 }
 
