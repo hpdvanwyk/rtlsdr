@@ -110,6 +110,9 @@ struct fm_state
 	int      now_lpr;
 	int      prev_lpr_index;
 	int      stdin_input;
+	int      dc_block;
+	int16_t  dc_xm, dc_ym;
+	
 	void     (*mode_demod)(struct fm_state*);
 };
 
@@ -143,6 +146,7 @@ void usage(void)
 		"\t[-D enables de-emphasis (default: off)]\n"
 		"\t[-A enables high speed arctan (default: off)]\n\n"
 		"\t[-P enables use of stdin to pipe samples in (default: off)]\n"
+		"\t[-C enables dc blocking of output (default: off)]\n"
 		"Produces signed 16 bit ints, use Sox or aplay to hear them.\n"
 		"\trtl_fm ... - | play -t raw -r 24k -e signed-integer -b 16 -c 1 -V1 -\n"
 		"\t             | aplay -r 24k -f S16_LE -t raw -c 1\n"
@@ -170,6 +174,21 @@ static void sighandler(int signum)
 	rtlsdr_cancel_async(dev);
 }
 #endif
+
+void dc_block(struct fm_state *fm)
+{
+	int i = 0;
+	int16_t x,y;
+	
+	for(i=0;i<fm->signal2_len;i++)
+	{
+		x = fm->signal2[i];
+		y = x - fm->dc_xm + 0.995 * fm->dc_ym;
+		fm->dc_xm=x;
+		fm->dc_ym=y;
+		fm->signal2[i] = y;
+	}
+}
 
 void rotate_90(unsigned char *buf, uint32_t len)
 /* 90 rotation is 1+0j, 0+1j, -1+0j, 0-1j
@@ -540,6 +559,9 @@ void full_demod(struct fm_state *fm)
 	}
 	if (fm->deemph) {
 		deemph_filter(fm);}
+		
+	if (fm->dc_block) {
+		dc_block(fm);}
 	/* ignore under runs for now */
 	fwrite(fm->signal2, 2, fm->signal2_len, fm->file);
 	if (fm->freq_len > 1 && !sr && fm->squelch_hits > CONSEQ_SQUELCH) {
@@ -622,9 +644,12 @@ int main(int argc, char **argv)
 	fm.prev_lpr_index=0;
 	fm.deemph_a=0;
 	fm.now_lpr = 0;
+	fm.dc_block = 0;
+	fm.dc_xm =0;
+	fm.dc_ym =0;
 	sem_init(&data_ready, 0, 0);
 
-	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:EFANWMULRDP")) != -1) {
+	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:EFANWMULRDPC")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = atoi(optarg);
@@ -691,6 +716,9 @@ int main(int argc, char **argv)
 			break;
 		case 'P':
 			fm.stdin_input = 1;
+			break;
+		case 'C':
+			fm.dc_block = 1;
 			break;
 		default:
 			usage();
