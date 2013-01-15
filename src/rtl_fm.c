@@ -142,6 +142,7 @@ void usage(void)
 		"\t[-F enables high quality FIR (default: off/square)]\n"
 		"\t[-D enables de-emphasis (default: off)]\n"
 		"\t[-A enables high speed arctan (default: off)]\n\n"
+		"\t[-P enables use of stdin to pipe samples in (default: off)]\n"
 		"Produces signed 16 bit ints, use Sox or aplay to hear them.\n"
 		"\trtl_fm ... - | play -t raw -r 24k -e signed-integer -b 16 -c 1 -V1 -\n"
 		"\t             | aplay -r 24k -f S16_LE -t raw -c 1\n"
