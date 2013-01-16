@@ -144,9 +144,11 @@ void usage(void)
 		"\t[-R enables raw mode (default: off, 2x16 bit output)]\n"
 		"\t[-F enables high quality FIR (default: off/square)]\n"
 		"\t[-D enables de-emphasis (default: off)]\n"
-		"\t[-A enables high speed arctan (default: off)]\n\n"
+		"\t[-A enables high speed arctan (default: off)]\n"
 		"\t[-P enables use of stdin to pipe samples in (default: off)]\n"
 		"\t[-C enables dc blocking of output (default: off)]\n"
+		"\t[-i sets input downsampling, 0 is automatic (default: 0)]\n"
+		"\t (useful when combined with -P)\n\n"
 		"Produces signed 16 bit ints, use Sox or aplay to hear them.\n"
 		"\trtl_fm ... - | play -t raw -r 24k -e signed-integer -b 16 -c 1 -V1 -\n"
 		"\t             | aplay -r 24k -f S16_LE -t raw -c 1\n"
@@ -488,7 +490,10 @@ int post_squelch(struct fm_state *fm)
 static void optimal_settings(struct fm_state *fm, int freq, int hopping)
 {
 	int r, capture_freq, capture_rate;
-	fm->downsample = (1000000 / fm->sample_rate) + 1;
+	if(fm->downsample == 0)
+	{
+		fm->downsample = (1000000 / fm->sample_rate) + 1;
+	}
 	fm->freq_now = freq;
 	capture_rate = fm->downsample * fm->sample_rate;
 	capture_freq = fm->freqs[freq] + capture_rate/4;
@@ -637,19 +642,20 @@ int main(int argc, char **argv)
 	fm.output_rate = -1;  // flag for disabled
 	fm.stdin_input = 0;
 	fm.mode_demod = &fm_demod;
-	fm.pre_j=0;
-	fm.pre_r=0;
-	fm.now_r=0;
-	fm.now_j=0;
-	fm.prev_lpr_index=0;
-	fm.deemph_a=0;
+	fm.pre_j = 0;
+	fm.pre_r = 0;
+	fm.now_r = 0;
+	fm.now_j = 0;
+	fm.prev_lpr_index = 0;
+	fm.deemph_a = 0;
 	fm.now_lpr = 0;
 	fm.dc_block = 0;
-	fm.dc_xm =0;
-	fm.dc_ym =0;
+	fm.dc_xm = 0;
+	fm.dc_ym = 0;
+	fm.downsample = 0;
 	sem_init(&data_ready, 0, 0);
 
-	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:EFANWMULRDPC")) != -1) {
+	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:i:EFANWMULRDPC")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = atoi(optarg);
@@ -719,6 +725,9 @@ int main(int argc, char **argv)
 			break;
 		case 'C':
 			fm.dc_block = 1;
+			break;
+		case 'i':
+			fm.downsample = (int)atof(optarg);
 			break;
 		default:
 			usage();
