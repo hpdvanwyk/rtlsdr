@@ -537,7 +537,6 @@ static void optimal_settings(struct fm_state *fm, int freq, int hopping)
 
 void full_demod(struct fm_state *fm)
 {
-	int sr, freq_next;
 	int i, sr, freq_next, hop = 0;
 	if(!fm->stdin_input)
 	{
@@ -909,16 +908,6 @@ int main(int argc, char **argv)
 		  memcpy(fm.buf, buffer, readcount);
 		  fm.buf_len = readcount;
 		  full_demod(&fm);
-		  if (!fm.term_squelch_hits) 
-		  {
-			  readcount = fread(buffer, sizeof(uint8_t), lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH, stdin);
-			  continue;
-		  }
-		  
-		  if (fm.squelch_hits > fm.term_squelch_hits) 
-		  {
-			  do_exit = 1;
-		  }
 		  readcount = fread(buffer, sizeof(uint8_t), lcm_post[fm.post_downsample] * DEFAULT_BUF_LENGTH, stdin);
 	  }
 	  r=0;
