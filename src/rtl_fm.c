@@ -872,8 +872,8 @@ int main(int argc, char **argv)
 	  } else {
 	    fprintf(stderr, "Tuner gain set to %0.2f dB.\n", gain/10.0);
 	  }
+		r = rtlsdr_set_freq_correction(dev, ppm_error);
 	}
-	r = rtlsdr_set_freq_correction(dev, ppm_error);
 
 	if (strcmp(filename, "-") == 0) { /* Write samples to stdout */
 		fm.file = stdout;
