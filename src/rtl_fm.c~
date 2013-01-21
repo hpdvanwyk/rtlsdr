@@ -537,12 +537,16 @@ static void optimal_settings(struct fm_state *fm, int freq, int hopping)
 
 void full_demod(struct fm_state *fm)
 {
+<<<<<<< HEAD
 	int sr, freq_next;
-	int i, sr, freq_next, hop = 0;
 	if(!fm->stdin_input)
 	{
 		rotate_90(fm->buf, fm->buf_len);
 	}
+=======
+	int i, sr, freq_next, hop = 0;
+	rotate_90(fm->buf, fm->buf_len);
+>>>>>>> 3cbf1392612a0c6f02ec178f8e78568138f12b0a
 	if (fm->fir_enable) {
 		low_pass_fir(fm, fm->buf, fm->buf_len);
 	} else {
@@ -579,13 +583,20 @@ void full_demod(struct fm_state *fm)
 	if (hop) {
 		freq_next = (fm->freq_now + 1) % fm->freq_len;
 		optimal_settings(fm, freq_next, 1);
-		fm->squelch_hits = fm->conseq_squelch + 1;  /* hair trigger */
+<<<<<<< HEAD
+		fm->squelch_hits = CONSEQ_SQUELCH + 1;  /* hair trigger */
 		if(!fm->stdin_input)
 		{
-			/* wait for settling and flush buffer */
+			/* wait for settling and dump buffer */
 			usleep(5000);
 			rtlsdr_read_sync(dev, NULL, 4096, NULL);
 		}
+=======
+		fm->squelch_hits = fm->conseq_squelch + 1;  /* hair trigger */
+		/* wait for settling and flush buffer */
+		usleep(5000);
+		rtlsdr_read_sync(dev, NULL, 4096, NULL);
+>>>>>>> 3cbf1392612a0c6f02ec178f8e78568138f12b0a
 	}
 }
 
@@ -701,7 +712,11 @@ int main(int argc, char **argv)
 	fm.downsample = 0;
 	sem_init(&data_ready, 0, 0);
 
-	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:i:p:EFANWMULRDPC")) != -1) {
+<<<<<<< HEAD
+	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:i:EFANWMULRDPC")) != -1) {
+=======
+	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:p:EFANWMULRD")) != -1) {
+>>>>>>> 3cbf1392612a0c6f02ec178f8e78568138f12b0a
 		switch (opt) {
 		case 'd':
 			dev_index = atoi(optarg);

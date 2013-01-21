@@ -70,10 +70,17 @@ struct llist {
 	struct llist *next;
 };
 
+typedef struct { /* structure size must be multiple of 2 bytes */
+	char magic[4];
+	uint32_t tuner_type;
+	uint32_t tuner_gain_count;
+} dongle_info_t;
+
 static rtlsdr_dev_t *dev = NULL;
 
 int global_numq = 0;
 static struct llist *ll_buffers = 0;
+int llbuf_num=500;
 
 static int do_exit = 0;
 
@@ -86,6 +93,7 @@ void usage(void)
 		"\t[-g gain (default: 0 for auto)]\n"
 		"\t[-s samplerate in Hz (default: 2048000 Hz)]\n"
 		"\t[-b number of buffers (default: 32, set by library)]\n"
+		"\t[-n max number of linked list buffers to keep (default: 500)]\n"
 		"\t[-d device index (default: 0)]\n");
 	exit(1);
 }
@@ -123,8 +131,10 @@ sighandler(int signum)
 static void sighandler(int signum)
 {
 	fprintf(stderr, "Signal caught, exiting!\n");
-	do_exit = 1;
-	rtlsdr_cancel_async(dev);
+	if (!do_exit) {
+      rtlsdr_cancel_async(dev);
+      do_exit = 1;
+    }
 }
 #endif
 
@@ -149,6 +159,16 @@ void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 				cur = cur->next;
 				num_queued++;
 			}
+
+			if(llbuf_num && llbuf_num == num_queued-2){
+				struct llist *curelem;
+
+				free(ll_buffers->data);
+				curelem = ll_buffers->next;
+				free(ll_buffers);
+				ll_buffers = curelem;
+			}
+
 			cur->next = rpt;
 
 			if (num_queued > global_numq)
@@ -206,9 +226,13 @@ static void *tcp_worker(void *arg)
 				r = select(s+1, NULL, &writefds, NULL, &tv);
 				if(r) {
 					bytessent = send(s,  &curelem->data[index], bytesleft, 0);
-					if (bytessent == SOCKET_ERROR || do_exit) {
-						printf("worker socket error\n");
+					if (bytessent == SOCKET_ERROR) {
+                        perror("worker socket error");
 						sighandler(0);
+						dead[0]=1;
+						pthread_exit(NULL);
+					} else if (do_exit) {
+						printf("do_exit\n");
 						dead[0]=1;
 						pthread_exit(NULL);
 					} else {
@@ -228,6 +252,24 @@ static void *tcp_worker(void *arg)
 			free(prev);
 		}
 	}
+}
+
+static int set_gain_by_index(rtlsdr_dev_t *_dev, unsigned int index)
+{
+	int res = 0;
+	int* gains;
+	int count = rtlsdr_get_tuner_gains(_dev, NULL);
+
+	if (count > 0 && (unsigned int)count > index) {
+		gains = malloc(sizeof(int) * count);
+		count = rtlsdr_get_tuner_gains(_dev, gains);
+
+		res = rtlsdr_set_tuner_gain(_dev, gains[index]);
+
+		free(gains);
+	}
+
+	return res;
 }
 
 #ifdef _WIN32
@@ -260,9 +302,13 @@ static void *command_worker(void *arg)
 			r = select(s+1, &readfds, NULL, NULL, &tv);
 			if(r) {
 				received = recv(s, (char*)&cmd+(sizeof(cmd)-left), left, 0);
-				if(received == SOCKET_ERROR || do_exit){
-					printf("comm recv socket error\n");
+				if(received == SOCKET_ERROR){
+                    perror("comm recv socket error");
 					sighandler(0);
+					dead[1]=1;
+					pthread_exit(NULL);
+				} else if(do_exit){
+					printf("do exit\n");
 					dead[1]=1;
 					pthread_exit(NULL);
 				} else {
@@ -325,6 +371,10 @@ static void *command_worker(void *arg)
 			printf("set tuner xtal %d\n", ntohl(cmd.param));
 			rtlsdr_set_xtal_freq(dev, 0, ntohl(cmd.param));
 			break;
+		case 0x0d:
+			printf("set tuner gain by index %d\n", ntohl(cmd.param));
+			set_gain_by_index(dev, ntohl(cmd.param));
+			break;
 		default:
 			break;
 		}
@@ -351,6 +401,7 @@ int main(int argc, char **argv)
 	socklen_t rlen;
 	fd_set readfds;
 	u_long blockmode = 1;
+	dongle_info_t dongle_info;
 #ifdef _WIN32
 	WSADATA wsd;
 	i = WSAStartup(MAKEWORD(2,2), &wsd);
@@ -358,7 +409,7 @@ int main(int argc, char **argv)
 	struct sigaction sigact, sigign;
 #endif
 
-	while ((opt = getopt(argc, argv, "a:p:f:g:s:b:d:")) != -1) {
+	while ((opt = getopt(argc, argv, "a:p:f:g:s:b:n:d:")) != -1) {
 		switch (opt) {
 		case 'd':
 			dev_index = atoi(optarg);
@@ -380,6 +431,9 @@ int main(int argc, char **argv)
 			break;
 		case 'b':
 			buf_num = atoi(optarg);
+			break;
+		case 'n':
+			llbuf_num = atoi(optarg);
 			break;
 		default:
 			usage();
@@ -505,21 +559,38 @@ int main(int argc, char **argv)
 
 		printf("client accepted!\n");
 
+		memset(&dongle_info, 0, sizeof(dongle_info));
+		memcpy(&dongle_info.magic, "RTL0", 4);
+
+		r = rtlsdr_get_tuner_type(dev);
+		if (r >= 0)
+			dongle_info.tuner_type = htonl(r);
+
+		r = rtlsdr_get_tuner_gains(dev, NULL);
+		if (r >= 0)
+			dongle_info.tuner_gain_count = htonl(r);
+
+		r = send(s, (const char *)&dongle_info, sizeof(dongle_info), 0);
+		if (sizeof(dongle_info) != r)
+			printf("failed to send dongle information\n");
+
 		pthread_attr_init(&attr);
 		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 		r = pthread_create(&tcp_worker_thread, &attr, tcp_worker, NULL);
 		r = pthread_create(&command_thread, &attr, command_worker, NULL);
 		pthread_attr_destroy(&attr);
 
-		r = rtlsdr_read_async(dev, rtlsdr_callback, (void *)0,
-				      buf_num, 0);
+		r = rtlsdr_read_async(dev, rtlsdr_callback, NULL, buf_num, 0);
 
-		closesocket(s);
 		if(!dead[0])
 			pthread_join(tcp_worker_thread, &status);
+		dead[0]=0;
 
 		if(!dead[1])
 			pthread_join(command_thread, &status);
+		dead[1]=0;
+
+		closesocket(s);
 
 		printf("all threads dead..\n");
 		curelem = ll_buffers;
