@@ -678,7 +678,7 @@ int main(int argc, char **argv)
 	fm.conseq_squelch = 20;
 	fm.squelch_hits = 0;
 	fm.terminate_on_squelch = 0;
-	fm.freq_len = 0;
+	fm.freq_len = 1;
 	fm.edge = 0;
 	fm.fir_enable = 0;
 	fm.prev_index = 0;
@@ -707,6 +707,7 @@ int main(int argc, char **argv)
 			dev_index = atoi(optarg);
 			break;
 		case 'f':
+			fm.freq_len = 0;
 			if (strchr(optarg, ':'))
 				{frequency_range(&fm, optarg);}
 			else
