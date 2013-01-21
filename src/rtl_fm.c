@@ -676,6 +676,7 @@ int main(int argc, char **argv)
 	fm.sample_rate = DEFAULT_SAMPLE_RATE;
 	fm.squelch_level = 0;
 	fm.conseq_squelch = 20;
+	fm.squelch_hits = 0;
 	fm.terminate_on_squelch = 0;
 	fm.freq_len = 0;
 	fm.edge = 0;
